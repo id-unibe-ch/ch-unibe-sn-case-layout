@@ -14,6 +14,7 @@ const typeInputs = () => [...typesBox.querySelectorAll('input')];
 
 function render(s) {
   $('dark').checked = !!s.dark;
+  $('descriptionAtBottom').checked = !!s.descriptionAtBottom;
   $('paneWidth').value = s.paneWidth;
   $('filterEnabled').checked = !!s.filterEnabled;
   $('enforcePrefs').checked = !!s.enforcePrefs;
@@ -39,7 +40,7 @@ function save() {
   if (filterEnabled && !postTypes.length) return; // don't save an empty filter
   let paneWidth = Math.round(Number($('paneWidth').value));
   if (!Number.isFinite(paneWidth) || paneWidth < 0) paneWidth = 0;
-  chrome.storage.sync.set({ dark: $('dark').checked, paneWidth, filterEnabled, postTypes, enforcePrefs: $('enforcePrefs').checked, enforceEnglish: $('enforceEnglish').checked }, () => {
+  chrome.storage.sync.set({ dark: $('dark').checked, descriptionAtBottom: $('descriptionAtBottom').checked, paneWidth, filterEnabled, postTypes, enforcePrefs: $('enforcePrefs').checked, enforceEnglish: $('enforceEnglish').checked }, () => {
     $('status').textContent = 'Saved';
     clearTimeout(timer);
     timer = setTimeout(() => { $('status').textContent = ''; }, 1500);

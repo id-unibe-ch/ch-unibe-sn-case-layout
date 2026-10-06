@@ -19,6 +19,7 @@
   window.__sowCaseLayout = true;
 
   const CFG = {
+    descriptionAtBottom: true,
     descField: 'u_description_html',
     // always hide on the left (if present)
     hideFields: ['u_description_html', 'comments', 'work_notes'],
@@ -279,6 +280,7 @@
       let c = {};
       try { c = raw ? JSON.parse(raw) : {}; } catch (e) { c = {}; }
       userConfig.value = {
+        descriptionAtBottom: typeof c.descriptionAtBottom === 'boolean' ? c.descriptionAtBottom : CFG.descriptionAtBottom,
         paneWidth: Number.isFinite(c.paneWidth) ? c.paneWidth : CFG.leftPaneWidth,
         filterEnabled: typeof c.filterEnabled === 'boolean' ? c.filterEnabled : CFG.activityFilter,
         postTypes: Array.isArray(c.postTypes) ? c.postTypes : CFG.activityPostTypes,
@@ -346,6 +348,7 @@
 
   function renderDescription(asr, descEl) {
     ensureStyle(asr, ACTIVITY_CSS);
+    const cfg = userConfig();
     const host = asr.querySelector('.sn-as') || asr;
     let card = asr.querySelector('.ext-sowcl-desc');
     if (!card) {
@@ -354,7 +357,12 @@
       card.innerHTML = `<header><span>${CFG.descTitle}</span><span class="chev">▼</span></header><div class="body"></div>`;
       card.querySelector('header').addEventListener('click', () => card.classList.toggle('collapsed'));
     }
-    if (card.parentNode !== host || host.lastElementChild !== card) host.appendChild(card);
+    if (cfg.descriptionAtBottom) {
+      if (card.parentNode !== host || host.lastElementChild !== card) host.appendChild(card);
+    } else {
+      if (card.parentNode !== host || host.firstElementChild !== card) host.prepend(card);
+    }
+
 
     const raw = typeof descEl.value === 'string' ? descEl.value : '';
     if (card.__raw !== raw) {

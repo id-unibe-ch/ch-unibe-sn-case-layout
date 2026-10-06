@@ -1,6 +1,7 @@
 // Shared defaults for popup.js, bridge.js and background.js
 const SNCL_DEFAULTS = {
   dark: true,
+  descriptionAtBottom: true,
   enforcePrefs: true,
   enforceEnglish: true,
   paneWidth: 360,
