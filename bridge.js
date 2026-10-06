@@ -8,6 +8,7 @@
     if (s.dark) html.setAttribute('data-sowcl-dark', '');
     else html.removeAttribute('data-sowcl-dark');
     html.setAttribute('data-sowcl-config', JSON.stringify({
+      descriptionAtBottom: s.descriptionAtBottom,
       paneWidth: Number(s.paneWidth) || 0,
       filterEnabled: !!s.filterEnabled,
       postTypes: Array.isArray(s.postTypes) ? s.postTypes : [],
