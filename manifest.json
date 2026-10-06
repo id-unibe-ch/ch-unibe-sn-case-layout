@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "SN Case Layout (IDCI)",
+  "short_name": "SN Case Layout",
+  "version": "1.10.0",
+  "description": "Cleaner ticket layout for the University of Bern ServiceNow workspace: description in activity stream, custom tabs, dark theme.",
+  "minimum_chrome_version": "111",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "SN Case Layout – settings",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "popup.html",
+    "open_in_tab": false
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://serviceportal.unibe.ch/now/*"
+      ],
+      "js": [
+        "settings.js",
+        "bridge.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://serviceportal.unibe.ch/now/*"
+      ],
+      "js": [
+        "lists.js",
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    }
+  ]
+}

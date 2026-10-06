@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SN Case Layout – Settings</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="icons/icon32.png" alt="" width="24" height="24">
+    <h1>SN Case Layout</h1>
+  </header>
+
+  <section>
+    <label class="row switch">
+      <span>Dark theme</span>
+      <input type="checkbox" id="dark">
+    </label>
+  </section>
+
+  <section>
+    <h2>Left pane</h2>
+    <label class="row">
+      <span>Initial width</span>
+      <span class="num"><input type="number" id="paneWidth" min="0" max="1200" step="10"> px</span>
+    </label>
+    <p class="hint">Applied when a record opens; you can still drag the divider. 0 = ServiceNow default.</p>
+  </section>
+
+  <section>
+    <h2>Activity filter</h2>
+    <label class="row switch">
+      <span>Preset post types</span>
+      <input type="checkbox" id="filterEnabled">
+    </label>
+    <div id="postTypes" class="types"></div>
+    <p class="hint" id="filterHint">Applied when a record opens.</p>
+  </section>
+
+  <section>
+    <h2>Workspace preferences</h2>
+    <label class="row switch">
+      <span>Keep recommended settings</span>
+      <input type="checkbox" id="enforcePrefs">
+    </label>
+    <p class="hint">Show the ribbon: on · Show the sidebar: off · Expand activity stream items: on · Lazy load workspace pages: off.</p>
+    <label class="row switch" style="margin-top:8px">
+      <span>English ServiceNow language</span>
+      <input type="checkbox" id="enforceEnglish">
+    </label>
+    <p class="hint">Recommended: the layout relies on English labels. Both options are checked when ServiceNow loads and change your own ServiceNow preferences.</p>
+  </section>
+
+  <section>
+    <h2>My lists</h2>
+    <div id="lists" class="types"></div>
+    <div class="row" style="margin-top:8px;cursor:default">
+      <button type="button" id="addLists">Add selected to My lists</button>
+    </div>
+    <p class="hint" id="listsHint">Adds the lists under Lists → My lists → Created by me. Open a ServiceNow tab first. Existing lists are skipped.</p>
+  </section>
+
+  <footer>
+    <button type="button" id="reset">Reset to defaults</button>
+    <span id="status" aria-live="polite"></span>
+  </footer>
+
+  <script src="settings.js"></script>
+  <script src="lists.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

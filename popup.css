@@ -1,0 +1,40 @@
+:root {
+  --bg: #083344; --panel: #0b3f52; --line: #155e75; --text: #ecfeff; --muted: #a5f3fc;
+  --accent: #22d3ee; --accent-strong: #0891b2; --warn: #fcd34d;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; width: 320px; padding: 14px 16px 12px;
+  font: 13px/1.4 Lato, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text);
+}
+header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+h1 { font-size: 15px; margin: 0; font-weight: 700; }
+h2 { font-size: 11px; margin: 0 0 6px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+.num { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+input[type="number"] {
+  width: 76px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--text); font: inherit; text-align: right;
+}
+input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; cursor: pointer; }
+.switch input { width: 34px; height: 18px; appearance: none; border-radius: 9px; background: var(--line); position: relative; transition: background .15s; }
+.switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--text); transition: transform .15s; }
+.switch input:checked { background: var(--accent-strong); }
+.switch input:checked::after { transform: translateX(16px); }
+.types { display: grid; gap: 4px; margin-top: 8px; }
+.types label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.types label .state { margin-left: auto; font-size: 11px; color: var(--muted); }
+.types label .state.ok { color: var(--accent); }
+.types label .state.err { color: var(--warn); }
+.types.disabled { opacity: .45; pointer-events: none; }
+.hint { margin: 6px 0 0; font-size: 11px; color: var(--muted); }
+.hint.warn { color: var(--warn); }
+footer { display: flex; align-items: center; justify-content: space-between; }
+button {
+  font: inherit; color: var(--accent); background: none; border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 10px; cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+#status { font-size: 11px; color: var(--muted); }
