@@ -18,8 +18,12 @@ input[type="number"] {
   width: 76px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line);
   background: var(--bg); color: var(--text); font: inherit; text-align: right;
 }
+select {
+  padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--text); font: inherit;
+}
 input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; cursor: pointer; }
-.switch input { width: 34px; height: 18px; appearance: none; border-radius: 9px; background: var(--line); position: relative; transition: background .15s; }
+.switch input { flex: none; width: 34px; height: 18px; appearance: none; border-radius: 9px; background: var(--line); position: relative; transition: background .15s; }
 .switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--text); transition: transform .15s; }
 .switch input:checked { background: var(--accent-strong); }
 .switch input:checked::after { transform: translateX(16px); }
@@ -28,6 +32,8 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .types label .state { margin-left: auto; font-size: 11px; color: var(--muted); }
 .types label .state.ok { color: var(--accent); }
 .types label .state.err { color: var(--warn); }
+.types .cat { margin-top: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.types .cat:first-child { margin-top: 0; }
 .types.disabled { opacity: .45; pointer-events: none; }
 .hint { margin: 6px 0 0; font-size: 11px; color: var(--muted); }
 .hint.warn { color: var(--warn); }

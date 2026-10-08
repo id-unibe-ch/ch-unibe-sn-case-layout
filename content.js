@@ -5,11 +5,13 @@
  *  - Hide "Additional comments" / "Work notes" on the left
  *  - Depending on the ticket type, move sections or single fields into custom tabs in the centre
  *    (configured in CFG.layouts)
- *  - Hide the "Email" tab
+ *  - Hide the "Email" tab (optional, see popup)
  *  - Initial width of the left pane and pre-selected activity filter
+ *  - Lists: wrapped column text limited to 2 lines, rows with a caller reply highlighted,
+ *    groups expanded; imported lists shown under category headings in the Lists sidebar
  *  - Keep the required workspace preferences (ribbon, sidebar, activity expansion, lazy loading)
  *    and optionally the English UI language
- *  - Optional dark theme (toggled by clicking the extension icon)
+ *  - Optional dark theme (popup setting; never on classic UI pages)
  *
  * Runs in the MAIN world (access to component properties such as .value / .table).
  */
@@ -23,7 +25,15 @@
     descField: 'u_description_html',
     // always hide on the left (if present)
     hideFields: ['u_description_html', 'comments', 'work_notes'],
+    // compose tabs hidden in the centre; 'email' only while showEmailTab is off
     hideComposeTabs: ['email'],
+    showEmailTab: false,
+    // clearer labels for native compose tabs (by item id); ServiceNow's own label stays in the activity stream
+    composeLabels: { comments: 'Reply to customer' },
+    // order of the native compose tabs (by item id) – same for all tables (UniBe Case puts comments first)
+    composeTabOrder: ['work_notes', 'comments', 'email'],
+    // compose tab selected when a record opens: 'work_notes' or 'comments' (user setting in the popup)
+    startTab: 'work_notes',
     descTitle: 'Customer request (Description)',
     interval: 700,
     // Defaults – can be overridden per user in the extension popup (stored in chrome.storage.sync,
@@ -43,13 +53,30 @@
       'workspace.showAgentAssist': 'false', // Show the sidebar
       'activity.expand_by_default': 'true', // Expand activity stream items by default
       'workspace.lazyLoading.enabled': 'false', // Lazy load workspace pages
+      'table.wrap': 'true', // Wrap column text in lists (classic list gear → "Wrap column text")
+      // Theme: Coral, default variant – layout and dark theme are built on its colours
+      'glide.ui.polaris.theme': 'fad87d2ca304121029a4d1aed31e610f',
+      'glide.ui.polaris.theme.variant': '',
     },
+    // Max. lines per list cell when column text wraps (0 = unlimited)
+    listMaxLines: 2,
+    // Highlight list rows where the caller acted last (u_last_action_from_caller); re-read after ttl
+    markCallerReplies: true,
+    callerReplyTables: ['incident', 'sn_customerservice_unibe_case', 'u_id_task'],
+    callerReplyTtl: 60000,
+    // Title prefix for lists created from lists.js – marks them as ours under My lists
+    listPrefix: 'SN: ',
+    // Expand the groups of grouped lists ("Group by") instead of showing them collapsed
+    expandGroups: true,
+    // Bar colour by days since "Updated": ≤ green → green, ≤ yellow → yellow, older → red
+    callerReplyAge: { green: 2, yellow: 10 },
     /*
      * Per table (see URL /now/sow/record/<table>/…):
      *   tabs:          additional tabs in the centre; per tab "sections" (headings as RegExp)
      *                  and/or "fields" (field names) – these are moved from the left into the tab
      *   replaceNative: true = hide the native input in the centre (e.g. email composer),
-     *                  only the custom tabs are shown
+     *                  only the custom tabs are shown; "compose" marks the tab that stands for a
+     *                  native one (work_notes / comments) for the start tab setting
      *   hideFields:    additional fields to hide on the left
      */
     layouts: {
@@ -67,9 +94,10 @@
       },
       u_id_task: {
         replaceNative: true,
+        // same order and labels as the native tabs of incidents / cases
         tabs: [
-          { label: 'Additional comments', fields: ['u_comments_html'] },
-          { label: 'Work notes', fields: ['u_work_notes_html'] },
+          { label: 'Work notes', fields: ['u_work_notes_html'], compose: 'work_notes' },
+          { label: 'Reply to customer', fields: ['u_comments_html'], compose: 'comments' },
           { label: 'Resolution', sections: [/^resolution information$/i] },
         ],
       },
@@ -179,7 +207,15 @@
   `;
 
   const TABS_CSS = (hidden) => `
-    ${hidden.map((id) => `button.now-tab[data-itemid="${id}"]`).join(',')} { display: none !important; }
+    ${hidden.length ? `${hidden.map((id) => `button.now-tab[data-itemid="${id}"]`).join(',')} { display: none !important; }` : ''}
+    ${Object.entries(CFG.composeLabels).map(([id, label]) => `
+      button.now-tab[data-itemid="${id}"] .now-tab-label { font-size: 0; }
+      button.now-tab[data-itemid="${id}"] .now-tab-label::after { content: ${JSON.stringify(label)}; font-size: 16px; }`).join('')}
+    ${CFG.composeTabOrder.map((id, i) => `button.now-tab[data-itemid="${id}"] { order: ${i}; }`).join(' ')}
+    /* ServiceNow spaces the tabs with margin-left on all but the first in the DOM – with a different
+       visual order use a gap instead */
+    .now-tab-list { column-gap: 24px; }
+    button.now-tab { margin-left: 0 !important; }
     :host(.ext-sowcl-active) .now-tab.is-selected { color: rgb(var(--now-color_text--primary, 16, 23, 26)) !important; }
     :host(.ext-sowcl-active) .now-tab.is-selected::after { background: transparent !important; }
   `;
@@ -281,6 +317,9 @@
       try { c = raw ? JSON.parse(raw) : {}; } catch (e) { c = {}; }
       userConfig.value = {
         descriptionAtBottom: typeof c.descriptionAtBottom === 'boolean' ? c.descriptionAtBottom : CFG.descriptionAtBottom,
+        showEmailTab: typeof c.showEmailTab === 'boolean' ? c.showEmailTab : CFG.showEmailTab,
+        markCallerReplies: typeof c.markCallerReplies === 'boolean' ? c.markCallerReplies : CFG.markCallerReplies,
+        startTab: ['work_notes', 'comments'].includes(c.startTab) ? c.startTab : CFG.startTab,
         paneWidth: Number.isFinite(c.paneWidth) ? c.paneWidth : CFG.leftPaneWidth,
         filterEnabled: typeof c.filterEnabled === 'boolean' ? c.filterEnabled : CFG.activityFilter,
         postTypes: Array.isArray(c.postTypes) ? c.postTypes : CFG.activityPostTypes,
@@ -379,10 +418,21 @@
     const wrapper = csr.querySelector('.input-wrapper');
     if (!containerEl || !options || !wrapper) return;
     const nativeTabs = options.querySelector('now-tabs');
-    if (nativeTabs && nativeTabs.shadowRoot) ensureStyle(nativeTabs.shadowRoot, TABS_CSS(CFG.hideComposeTabs));
+    const hidden = hiddenComposeTabs();
+    if (nativeTabs && nativeTabs.shadowRoot) ensureStyle(nativeTabs.shadowRoot, TABS_CSS(hidden));
 
     // Hide the email composer also in the stacked view (where there is no tab to hide)
-    containerEl.classList.toggle('ext-sowcl-hide-email', CFG.hideComposeTabs.includes('email'));
+    containerEl.classList.toggle('ext-sowcl-hide-email', hidden.includes('email'));
+
+    // Start every record in the same compose tab (user setting) – once, the user can switch freely
+    const start = userConfig().startTab;
+    if (nativeTabs && nativeTabs.shadowRoot && !layout.replaceNative && !csr.__sowclStarted) {
+      const b = nativeTabs.shadowRoot.querySelector(`button.now-tab[data-itemid="${start}"]`);
+      if (b) {
+        csr.__sowclStarted = true;
+        if (b.getAttribute('aria-selected') !== 'true') b.click();
+      }
+    }
 
     const tabs = layout.tabs || [];
     if (!tabs.length) return;
@@ -396,8 +446,14 @@
       // down – scroll it back to the top (not on the very first render)
       if (csr.__sowclMode) keepCentreAtTop(csr.host);
       csr.__sowclMode = mode;
-      csr.__sowclActive = mode === 'replace' ? 0 : null;
-      csr.__sowclStackKey = null;
+      // start tab: in 'replace' the custom tab standing for it, in 'stacked' the native input
+      const startIdx = tabs.findIndex((t) => t.compose === start);
+      csr.__sowclActive = mode === 'replace' ? Math.max(startIdx, 0) : null;
+      const startInput = mode === 'stacked' ? stackedInputs(wrapper).findIndex((c) => {
+        const f = c.querySelector('[name]');
+        return f && f.getAttribute('name') === start;
+      }) : -1;
+      csr.__sowclStackKey = startInput >= 0 ? `n${startInput}` : null;
     }
     const replace = mode === 'replace';
     csr.__sowclReplace = replace;
@@ -545,7 +601,7 @@
     step();
   }
 
-  const NATIVE_LABELS = { work_notes: 'Work notes', comments: 'Additional comments' };
+  const NATIVE_LABELS = { work_notes: 'Work notes', comments: 'Additional comments', ...CFG.composeLabels };
 
   // True if the element (or a field inside it) is a visible mandatory field without a value
   function needsInput(root) {
@@ -594,10 +650,21 @@
     return false; // unknown field type – never force a jump
   }
 
-  // Native compose inputs in the stacked view (without the hidden email composer)
+  function hiddenComposeTabs() {
+    return userConfig().showEmailTab ? CFG.hideComposeTabs.filter((id) => id !== 'email') : CFG.hideComposeTabs;
+  }
+
+  // Native compose inputs in the stacked view (without the email composer, if hidden)
   function stackedInputs(wrapper) {
+    const hideEmail = hiddenComposeTabs().includes('email');
+    const rank = (c) => {
+      const f = c.querySelector('[name]');
+      const i = CFG.composeTabOrder.indexOf(f ? f.getAttribute('name') : '');
+      return i < 0 ? CFG.composeTabOrder.length : i;
+    };
     return [...wrapper.querySelectorAll(':scope > .input-control')]
-      .filter((c) => !c.querySelector('now-email-client-mini-composer-connected'));
+      .filter((c) => !hideEmail || !c.querySelector('now-email-client-mini-composer-connected'))
+      .sort((a, b) => rank(a) - rank(b)); // same order as the native tabs (CFG.composeTabOrder)
   }
 
   // Place the custom tab bar right next to the last visible native tab
@@ -811,6 +878,168 @@
     themeEditorIframes(dark);
   }
 
+  /* ---------- Lists ---------- */
+
+  // With "Wrap column text" ServiceNow clamps cells at 5 lines – cap them at CFG.listMaxLines.
+  // In truncate mode (table.wrap = false) the table has the class "truncate" and stays untouched.
+  const LIST_CSS = CFG.listMaxLines ? `
+    .now-list-table:not(.truncate) td.row-cell .cell-content {
+      display: -webkit-box !important; -webkit-box-orient: vertical !important;
+      -webkit-line-clamp: ${CFG.listMaxLines} !important; overflow: hidden !important; white-space: normal !important;
+    }
+  ` : '';
+
+  // Rows whose last action came from the caller (field u_last_action_from_caller) get a green
+  // background; the bar on the left shows how long the caller has been waiting (age of "Updated",
+  // see CFG.callerReplyAge): green → yellow → red. Other rows stay unchanged.
+  // The rows' sys_ids/tables come from the list's rowDefinitions; flag and sys_updated_on are read
+  // via the Table API and cached per record for CFG.callerReplyTtl ms. Highlighting is done with CSS
+  // on tr[data-key], so it survives ServiceNow re-rendering the rows.
+  const CALLER_BAR = { green: 'rgb(34, 197, 94)', yellow: 'rgb(234, 179, 8)', red: 'rgb(220, 38, 38)' };
+  const CALLER_REPLY_CSS = (hits) => {
+    if (!hits.length) return '';
+    // data-key is the sys_id, or "<group key>@<sys_id>" in grouped lists
+    const sel = (list, suffix) => list.map((h) => `tr[data-key$="${h.id}"] > td${suffix}`).join(',');
+    return `
+      ${sel(hits, '')} { background-color: rgba(34, 197, 94, .14) !important; }
+      /* bar as its own layer – ServiceNow covers the first cell with a ::before in grouped lists;
+         4px = width of ServiceNow's own group bar */
+      ${sel(hits, ':first-child')} { position: relative; }
+      ${sel(hits, ':first-child::after')} {
+        content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; z-index: 3; pointer-events: none;
+      }
+      ${Object.entries(CALLER_BAR).map(([level, color]) => {
+        const list = hits.filter((h) => h.level === level);
+        return list.length ? `${sel(list, ':first-child::after')} { background: ${color}; }` : '';
+      }).join('')}
+    `;
+  };
+  const callerReplies = new Map(); // sys_id → { flag, updated (ms), at }
+  const callerPending = new Set();
+
+  function callerReplyLevel(updated) {
+    if (!Number.isFinite(updated)) return null; // no bar
+    const days = Math.floor((Date.now() - updated) / 86400000);
+    return days <= CFG.callerReplyAge.green ? 'green' : days <= CFG.callerReplyAge.yellow ? 'yellow' : 'red';
+  }
+
+  async function fetchCallerReplies(table, ids) {
+    ids.forEach((id) => callerPending.add(id));
+    try {
+      const q = `sys_idIN${ids.join(',')}^u_last_action_from_caller=true`;
+      const res = await fetch(`/api/now/table/${table}?sysparm_fields=sys_id,sys_updated_on&sysparm_limit=${ids.length}&sysparm_query=${encodeURIComponent(q)}`,
+        { headers: { Accept: 'application/json', 'X-UserToken': window.g_ck } });
+      if (!res.ok) throw new Error(`read ${res.status}`);
+      // sys_updated_on comes in UTC ("YYYY-MM-DD HH:mm:ss")
+      const hits = new Map(((await res.json()).result || [])
+        .map((r) => [r.sys_id, Date.parse(r.sys_updated_on.replace(' ', 'T') + 'Z')]));
+      const at = Date.now();
+      ids.forEach((id) => callerReplies.set(id, { flag: hits.has(id), updated: hits.get(id), at }));
+    } catch (e) {
+      console.warn('[SN Case Layout] caller replies could not be read:', e);
+      const at = Date.now();
+      ids.forEach((id) => callerReplies.set(id, { flag: false, at }));
+    } finally {
+      ids.forEach((id) => callerPending.delete(id));
+    }
+  }
+
+  // Record rows of a list; in grouped lists they sit in the groups' "children"
+  function listRecords(list) {
+    const out = [];
+    const add = (rows) => (rows || []).forEach((r) => {
+      if (r.type === 'grouped') add(r.children);
+      else if (r.key && r.cells) out.push(r);
+    });
+    add(list.rowDefinitions && list.rowDefinitions.rows);
+    return out;
+  }
+
+  function markCallerReplies(list) {
+    const records = listRecords(list).map((r) => {
+      const cell = Object.values(r.cells).find((c) => c && c.metadata && c.metadata.recordClassName);
+      return { id: r.key.split('@').pop(), table: cell && cell.metadata.recordClassName };
+    }).filter((r) => CFG.callerReplyTables.includes(r.table));
+    const byTable = {};
+    records.forEach(({ id, table }) => {
+      const c = callerReplies.get(id);
+      if ((!c || Date.now() - c.at > CFG.callerReplyTtl) && !callerPending.has(id) && window.g_ck) {
+        (byTable[table] = byTable[table] || []).push(id);
+      }
+    });
+    Object.entries(byTable).forEach(([table, ids]) => fetchCallerReplies(table, ids));
+    return records.filter((r) => (callerReplies.get(r.id) || {}).flag)
+      .map((r) => ({ id: r.id, level: callerReplyLevel(callerReplies.get(r.id).updated) }));
+  }
+
+  // "Group by" collapses all groups – expand each group once when it first appears, so the user
+  // can still collapse it afterwards. Group keys are only the grouped value (e.g. the assignment
+  // group's sys_id) and ServiceNow reuses the list element for other lists → remember them per list.
+  function expandGroups(list) {
+    const seen = list.__sowclGroups || (list.__sowclGroups = new Set());
+    const m = location.pathname.match(/\/list-id\/([^/]+)/);
+    const listId = m ? m[1] : location.pathname;
+    list.shadowRoot.querySelectorAll('tr.grouped-row[data-key]').forEach((tr) => {
+      const key = `${listId}|${tr.getAttribute('data-key')}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      if (tr.getAttribute('aria-expanded') !== 'false') return;
+      const toggle = tr.querySelector('button.group-row-toggle');
+      if (toggle) toggle.click();
+    });
+  }
+
+  function processLists() {
+    const mark = userConfig().markCallerReplies;
+    deepQueryAll('now-list').forEach((l) => {
+      if (!l.shadowRoot) return;
+      if (CFG.expandGroups) expandGroups(l);
+      ensureStyle(l.shadowRoot, LIST_CSS + CALLER_REPLY_CSS(mark ? markCallerReplies(l) : []));
+    });
+  }
+
+  /* ---------- Lists sidebar ---------- */
+
+  // The imported "SN: …" lists stay under My lists → Created by me; they are only marked with their
+  // category (lists.js) and each category gets a heading (CSS ::before) – ServiceNow's own elements
+  // are not moved or replaced. The categories follow each other because the lists' "order" does.
+  const LIST_MENU_STYLE_ID = 'ext-sowcl-listmenu';
+  const LIST_MENU_CSS = `
+    /* heading aligned with the "Created by me" label (8px right of the nested items' row);
+       the lists sit slightly right of the heading (ServiceNow: 32px) to leave room for long titles */
+    li[data-sncl-head]::before {
+      content: attr(data-sncl-head); display: block; padding: 12px 0 4px 8px;
+      font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      color: rgb(var(--now-color_text--secondary, 82, 96, 103));
+    }
+    li[data-sncl-cat] .now-content-tree-leaf { margin-left: 16px !important; }
+    /* the user's own lists (without "SN: ") stay directly under "Created by me", above the headings */
+    #my_lists ul.now-content-tree-ul { display: flex; flex-direction: column; }
+    #my_lists li[role="treeitem"]:not([data-sncl-cat]) { order: -1; }
+  `;
+
+  function processListMenu() {
+    const lists = window.SNCL_LISTS || [];
+    if (!lists.length) return;
+    const cats = new Map(lists.map((l) => [CFG.listPrefix + l.title, l.category]));
+    deepQueryAll('now-content-tree').forEach((tree) => {
+      const sr = tree.shadowRoot;
+      const mine = sr && sr.getElementById('my_lists'); // "Created by me"
+      if (!mine) return;
+      ensureStyle(sr, LIST_MENU_CSS, LIST_MENU_STYLE_ID);
+      let prev = null;
+      mine.querySelectorAll('li[role="treeitem"]').forEach((li) => {
+        // only "SN: " lists get a category; other lists are skipped and don't break a category
+        const cat = cats.get(li.getAttribute('data-tooltip')) || null;
+        const head = cat && cat !== prev ? cat : null;
+        if (cat) prev = cat;
+        // only touch the attributes when they change (no needless DOM mutations every tick)
+        if (li.getAttribute('data-sncl-cat') !== cat) cat ? li.setAttribute('data-sncl-cat', cat) : li.removeAttribute('data-sncl-cat');
+        if (li.getAttribute('data-sncl-head') !== head) head ? li.setAttribute('data-sncl-head', head) : li.removeAttribute('data-sncl-head');
+      });
+    });
+  }
+
   /* ---------- Assignee badge ---------- */
 
   const ASSIGNEE_CSS = `
@@ -836,6 +1065,27 @@
     }
     .ext-sowcl-assignee button[disabled] { opacity: .6; cursor: default; }
     .ext-sowcl-assignee button[hidden] { display: none; }
+    /* group picker opened by "Assign to me" */
+    .ext-sowcl-groups {
+      position: absolute; right: 16px; top: calc(100% + 4px); z-index: 10; min-width: 260px; max-width: 420px;
+      max-height: 320px; overflow: auto; padding: 6px 0; border-radius: 8px;
+      background: rgb(var(--now-color_background--primary, 255, 255, 255));
+      border: 1px solid rgb(var(--now-color_border--secondary, 205, 211, 214));
+      box-shadow: 0 6px 24px rgba(0, 0, 0, .25);
+      font-family: Lato, Arial, sans-serif; font-size: 14px; color: rgb(var(--now-color_text--primary, 16, 23, 26));
+    }
+    .ext-sowcl-groups[hidden] { display: none; }
+    .ext-sowcl-groups .head { padding: 4px 14px 6px; font-size: 12px; font-weight: 700; color: rgb(var(--now-color_text--secondary, 82, 95, 102)); }
+    .ext-sowcl-groups .msg { padding: 6px 14px; color: rgb(var(--now-color_text--secondary, 82, 95, 102)); }
+    .ext-sowcl-groups button {
+      display: flex; width: 100%; gap: 8px; align-items: baseline; padding: 6px 14px; border: 0; background: none;
+      font: inherit; color: inherit; text-align: left; cursor: pointer;
+    }
+    .ext-sowcl-groups button:hover, .ext-sowcl-groups button:focus-visible {
+      background: rgb(var(--now-color_background--secondary, 244, 245, 245)); outline: none;
+    }
+    .ext-sowcl-groups .tag { margin-left: auto; font-size: 12px; color: rgb(var(--now-color_text--secondary, 82, 95, 102)); }
+    .ext-sowcl-groups .tag.-warn { color: rgb(var(--now-color_alert--warning-3, 184, 107, 0)); }
   `;
 
   function renderAssignee(form, fsr) {
@@ -849,7 +1099,7 @@
       badge = document.createElement('div');
       badge.className = 'ext-sowcl-assignee';
       badge.innerHTML = '<span class="lbl">Assigned to</span><span class="who"></span><span class="grp"></span><button type="button">Assign to me</button>';
-      badge.querySelector('button').addEventListener('click', () => assignToMe(form, fsr, badge));
+      badge.querySelector('button').addEventListener('click', () => toggleGroupPicker(form, fsr, badge));
       bar.appendChild(badge);
     }
     const group = fsr.querySelector('.sn-section-form-column > [name="assignment_group"]');
@@ -870,9 +1120,90 @@
     if (!badge.__busy) btn.disabled = false;
   }
 
-  // Assign the record to the current user via the Table API; the workspace picks up the change
-  // through its record watcher. Warns if the user is not a member of the assignment group.
-  async function assignToMe(form, fsr, badge) {
+  // "Assign to me" opens a picker with the user's groups (current assignment group first), so the
+  // group can be changed in the same step. The current group is listed even if the user is not a
+  // member (marked). Closes on Escape or a click outside.
+  let myGroups = null; // [{ id, name }] – loaded once per page
+
+  async function loadMyGroups(headers, me) {
+    if (myGroups) return myGroups;
+    const q = encodeURIComponent(`user=${me}^group.active=true`);
+    const r = await fetch(`/api/now/table/sys_user_grmember?sysparm_limit=500&sysparm_display_value=all&sysparm_fields=group,group.name,group.type&sysparm_query=${q}`, { headers });
+    if (!r.ok) throw new Error(`groups ${r.status}`);
+    // only groups of an "… Assignment Group" type (not e.g. authorization groups)
+    myGroups = ((await r.json()).result || [])
+      .filter((m) => /Assignment Group/i.test((m['group.type'] || {}).display_value || ''))
+      .map((m) => ({ id: (m.group || {}).value, name: (m['group.name'] || {}).display_value || '' }))
+      .filter((g) => g.id)
+      .sort((x, y) => x.name.localeCompare(y.name));
+    return myGroups;
+  }
+
+  async function toggleGroupPicker(form, fsr, badge) {
+    const bar = badge.parentNode;
+    let picker = bar.querySelector(':scope > .ext-sowcl-groups');
+    if (picker && !picker.hidden) { picker.hidden = true; return; }
+    if (!picker) {
+      picker = document.createElement('div');
+      picker.className = 'ext-sowcl-groups';
+      picker.setAttribute('role', 'menu');
+      bar.appendChild(picker);
+      // close on a click outside / Escape (composedPath: the click may come from another shadow root)
+      document.addEventListener('click', (ev) => {
+        if (!picker.hidden && !ev.composedPath().some((n) => n === picker || n === badge)) picker.hidden = true;
+      }, true);
+      document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') picker.hidden = true; }, true);
+    }
+    picker.hidden = false;
+    picker.innerHTML = '<div class="msg">Loading groups…</div>';
+    const me = window.NOW && window.NOW.user && window.NOW.user.userID;
+    const token = window.g_ck;
+    if (!me || !token) return;
+    const headers = { Accept: 'application/json', 'X-UserToken': token };
+    const current = fsr.querySelector('.sn-section-form-column > [name="assignment_group"]');
+    const currentId = (current && current.value) || '';
+    let groups;
+    try {
+      groups = await loadMyGroups(headers, me);
+    } catch (e) {
+      console.warn('[SN Case Layout] groups could not be read:', e);
+      groups = [];
+    }
+    const entries = groups.map((g) => ({ ...g, member: true }));
+    const cur = entries.find((g) => g.id === currentId);
+    const list = currentId
+      ? [cur || { id: currentId, name: (current && current.displayValue) || 'Current group', member: false },
+        ...entries.filter((g) => g.id !== currentId)]
+      : entries;
+    picker.innerHTML = '<div class="head">Assign to me in group</div>';
+    if (!list.length) picker.insertAdjacentHTML('beforeend', '<div class="msg">No groups found.</div>');
+    list.forEach((g) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.innerHTML = '<span class="name"></span><span class="tag"></span>';
+      b.querySelector('.name').textContent = g.name;
+      const tag = b.querySelector('.tag');
+      if (!g.member) {
+        tag.textContent = 'not a member';
+        tag.classList.add('-warn');
+      } else if (g.id === currentId) {
+        tag.textContent = 'current';
+      }
+      b.addEventListener('click', () => {
+        picker.hidden = true;
+        assignToMe(form, badge, g.id === currentId ? null : g);
+      });
+      picker.appendChild(b);
+    });
+    const first = picker.querySelector('button');
+    if (first) first.focus();
+  }
+
+  // Assign the record to the current user (and optionally to another group = { id, name }) via the
+  // Table API; the workspace picks up the change through its record watcher. A group change needs a
+  // work note (mandatory in ServiceNow) – it is added automatically.
+  async function assignToMe(form, badge, group) {
     const btn = badge.querySelector('button');
     const me = window.NOW && window.NOW.user && window.NOW.user.userID;
     const token = window.g_ck;
@@ -883,23 +1214,22 @@
     badge.__busy = true;
     btn.disabled = true;
     try {
-      const group = fsr.querySelector('.sn-section-form-column > [name="assignment_group"]');
-      const groupId = group && group.value;
-      if (groupId) {
-        const q = encodeURIComponent(`group=${groupId}^user=${me}`);
-        const r = await fetch(`/api/now/table/sys_user_grmember?sysparm_limit=1&sysparm_fields=sys_id&sysparm_query=${q}`, { headers });
-        const member = r.ok && ((await r.json()).result || []).length > 0;
-        if (!member && !window.confirm(`You are not a member of the assignment group "${group.displayValue || ''}". Assign the ticket to yourself anyway?`)) return;
-      }
+      const body = group
+        ? { assignment_group: group.id, assigned_to: me, work_notes: `[moved to ${group.name}]` }
+        : { assigned_to: me };
       const res = await fetch(`/api/now/table/${encodeURIComponent(table)}/${encodeURIComponent(sysId)}?sysparm_fields=assigned_to`, {
-        method: 'PATCH', headers, body: JSON.stringify({ assigned_to: me }),
+        method: 'PATCH', headers, body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        let detail = '';
+        try { const err = (await res.json()).error || {}; detail = err.detail || err.message || ''; } catch (x) { /* no JSON */ }
+        throw new Error(detail || `HTTP ${res.status}`);
+      }
       btn.textContent = 'Assigned ✓';
       setTimeout(() => { btn.textContent = 'Assign to me'; }, 4000);
     } catch (e) {
       console.warn('[SN Case Layout] assign to me failed:', e);
-      window.alert('Could not assign the ticket to you. Please use the "Assigned to" field instead.');
+      window.alert(`Could not assign the ticket to you: ${e.message}\n\nPlease use the "Assigned to" field instead.`);
     } finally {
       badge.__busy = false;
       btn.disabled = false;
@@ -910,19 +1240,42 @@
 
   // Requests come from the popup via bridge.js (window.postMessage). Only preset ids are accepted;
   // the list definitions themselves come from lists.js, never from the message.
-  async function addMyLists(ids) {
+  const GROUPBY = /\^GROUPBY[^^]*/g;
+
+  // ids = preset ids from lists.js; group = keep the presets' "Group by" (false: lists without grouping).
+  // Lists that already exist are left alone – only their grouping and position (order) are brought
+  // in line with the presets.
+  async function addMyLists(ids, group) {
     const presets = (window.SNCL_LISTS || []).filter((l) => ids.includes(l.id));
     const token = window.g_ck;
     if (!token) throw new Error('ServiceNow session not ready – reload the page and try again.');
     const headers = { Accept: 'application/json', 'Content-Type': 'application/json', 'X-UserToken': token };
     const api = '/api/now/table/sys_ux_my_list';
     const q = encodeURIComponent('sys_created_by=javascript:gs.getUserName()');
-    const res = await fetch(`${api}?sysparm_fields=title,table&sysparm_limit=500&sysparm_query=${q}`, { headers });
+    const res = await fetch(`${api}?sysparm_fields=sys_id,title,table,condition,order&sysparm_limit=500&sysparm_query=${q}`, { headers });
     if (!res.ok) throw new Error(`Could not read your lists (HTTP ${res.status}).`);
     const existing = (await res.json()).result || [];
     const results = {};
     for (const l of presets) {
-      if (existing.some((e) => e.title === l.title && e.table === l.table)) { results[l.id] = 'exists'; continue; }
+      // created lists get the prefix CFG.listPrefix; lists imported before it existed count as present
+      const title = CFG.listPrefix + l.title;
+      const condition = group ? l.condition : l.condition.replace(GROUPBY, '');
+      const found = existing.find((e) => (e.title === title || e.title === l.title) && e.table === l.table);
+      if (found) {
+        const wantGroup = (condition.match(GROUPBY) || []).join('');
+        const hasGroup = (found.condition.match(GROUPBY) || []).join('');
+        const change = {};
+        if (wantGroup !== hasGroup) change.condition = found.condition.replace(GROUPBY, '') + wantGroup;
+        if (Number(found.order) !== l.order) change.order = String(l.order);
+        if (!Object.keys(change).length) { results[l.id] = 'exists'; continue; }
+        try {
+          const r = await fetch(`${api}/${found.sys_id}?sysparm_fields=sys_id`, { method: 'PATCH', headers, body: JSON.stringify(change) });
+          results[l.id] = r.ok ? 'updated' : `error (update ${r.status})`;
+        } catch (e) {
+          results[l.id] = `error (${e.message})`;
+        }
+        continue;
+      }
       // ServiceNow ignores the field values on insert, so: create an empty list, then set the
       // table first (the condition depends on it) and finally condition, columns and order.
       try {
@@ -934,9 +1287,9 @@
           if (!r.ok) throw new Error(`update ${r.status}`);
           return (await r.json()).result;
         };
-        await patch({ title: l.title, table: l.table, active: 'true' });
-        const done = await patch({ condition: l.condition, columns: l.columns, order: String(l.order) });
-        results[l.id] = done.table === l.table && done.condition === l.condition ? 'added' : 'incomplete';
+        await patch({ title, table: l.table, active: 'true' });
+        const done = await patch({ condition, columns: l.columns, order: String(l.order) });
+        results[l.id] = done.table === l.table && done.condition === condition ? 'added' : 'incomplete';
       } catch (e) {
         results[l.id] = `error (${e.message})`;
       }
@@ -944,12 +1297,39 @@
     return results;
   }
 
+  // Delete all of the user's own lists whose title starts with CFG.listPrefix ("SN: ")
+  async function removeMyLists() {
+    const token = window.g_ck;
+    if (!token) throw new Error('ServiceNow session not ready – reload the page and try again.');
+    const headers = { Accept: 'application/json', 'X-UserToken': token };
+    const api = '/api/now/table/sys_ux_my_list';
+    const q = encodeURIComponent(`sys_created_by=javascript:gs.getUserName()^titleSTARTSWITH${CFG.listPrefix}`);
+    const res = await fetch(`${api}?sysparm_fields=sys_id,title&sysparm_limit=500&sysparm_query=${q}`, { headers });
+    if (!res.ok) throw new Error(`Could not read your lists (HTTP ${res.status}).`);
+    // STARTSWITH ignores trailing spaces and case – check the prefix exactly
+    const lists = ((await res.json()).result || []).filter((l) => l.title.startsWith(CFG.listPrefix));
+    let removed = 0;
+    const failed = [];
+    for (const l of lists) {
+      const r = await fetch(`${api}/${l.sys_id}`, { method: 'DELETE', headers });
+      if (r.ok) removed++; else failed.push(l.title);
+    }
+    return { removed, failed };
+  }
+
+  // Popup → page (via bridge.js): create or delete the predefined lists
   window.addEventListener('message', async (ev) => {
     const d = ev.data;
-    if (ev.source !== window || !d || d.type !== 'sncl:add-lists' || !Array.isArray(d.ids)) return;
+    if (ev.source !== window || !d || !['sncl:add-lists', 'sncl:remove-lists'].includes(d.type)) return;
     let reply;
-    try { reply = { ok: true, results: await addMyLists(d.ids.map(String)) }; } catch (e) { reply = { ok: false, error: e.message }; }
-    window.postMessage({ type: 'sncl:add-lists:result', nonce: d.nonce, ...reply }, location.origin);
+    try {
+      reply = d.type === 'sncl:add-lists'
+        ? { ok: true, results: await addMyLists((d.ids || []).map(String), d.group !== false) }
+        : { ok: true, ...(await removeMyLists()) };
+    } catch (e) {
+      reply = { ok: false, error: e.message };
+    }
+    window.postMessage({ type: `${d.type}:result`, nonce: d.nonce, ...reply }, location.origin);
   });
 
   /* ---------- Workspace preferences ---------- */
@@ -987,7 +1367,8 @@
       const rows = (await res.json()).result || [];
       for (const name of names) {
         const row = rows.find((r) => r.name === name);
-        if (row && row.value === wanted[name]) continue;
+        // a missing preference equals an empty value (ServiceNow default)
+        if (row ? row.value === wanted[name] : wanted[name] === '') continue;
         const r = await fetch('/api/now/graphql', {
           method: 'POST',
           headers,
@@ -1030,6 +1411,8 @@
   function tick() {
     try {
       deepQueryAll('now-record-form-section-column-layout').forEach(processForm);
+      processLists();
+      processListMenu();
       syncWorkspacePrefs();
       applyDark();
     } catch (e) {

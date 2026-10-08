@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SN Case Layout (IDCI)",
   "short_name": "SN Case Layout",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "Cleaner ticket layout for the University of Bern ServiceNow workspace: description in activity stream, custom tabs, dark theme.",
   "minimum_chrome_version": "111",
   "icons": {

@@ -2,6 +2,10 @@
 const SNCL_DEFAULTS = {
   dark: true,
   descriptionAtBottom: true,
+  showEmailTab: false,
+  startTab: 'work_notes',
+  markCallerReplies: true,
+  groupLists: true,
   enforcePrefs: true,
   enforceEnglish: true,
   paneWidth: 360,
