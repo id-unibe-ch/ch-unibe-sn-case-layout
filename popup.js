@@ -15,6 +15,10 @@ const typeInputs = () => [...typesBox.querySelectorAll('input')];
 function render(s) {
   $('dark').checked = !!s.dark;
   $('descriptionAtBottom').checked = !!s.descriptionAtBottom;
+  $('showEmailTab').checked = !!s.showEmailTab;
+  $('startTab').value = s.startTab === 'comments' ? 'comments' : 'work_notes';
+  $('markCallerReplies').checked = !!s.markCallerReplies;
+  $('groupLists').checked = !!s.groupLists;
   $('paneWidth').value = s.paneWidth;
   $('filterEnabled').checked = !!s.filterEnabled;
   $('enforcePrefs').checked = !!s.enforcePrefs;
@@ -40,7 +44,7 @@ function save() {
   if (filterEnabled && !postTypes.length) return; // don't save an empty filter
   let paneWidth = Math.round(Number($('paneWidth').value));
   if (!Number.isFinite(paneWidth) || paneWidth < 0) paneWidth = 0;
-  chrome.storage.sync.set({ dark: $('dark').checked, descriptionAtBottom: $('descriptionAtBottom').checked, paneWidth, filterEnabled, postTypes, enforcePrefs: $('enforcePrefs').checked, enforceEnglish: $('enforceEnglish').checked }, () => {
+  chrome.storage.sync.set({ dark: $('dark').checked, descriptionAtBottom: $('descriptionAtBottom').checked, showEmailTab: $('showEmailTab').checked, startTab: $('startTab').value, markCallerReplies: $('markCallerReplies').checked, groupLists: $('groupLists').checked, paneWidth, filterEnabled, postTypes, enforcePrefs: $('enforcePrefs').checked, enforceEnglish: $('enforceEnglish').checked }, () => {
     $('status').textContent = 'Saved';
     clearTimeout(timer);
     timer = setTimeout(() => { $('status').textContent = ''; }, 1500);
@@ -55,7 +59,13 @@ chrome.storage.sync.get(SNCL_DEFAULTS, render);
 
 // ---- Predefined lists ----
 const listsBox = $('lists');
-SNCL_LISTS.forEach((l) => {
+SNCL_LISTS.forEach((l, i) => {
+  if (l.category && l.category !== (SNCL_LISTS[i - 1] || {}).category) {
+    const h = document.createElement('div');
+    h.className = 'cat';
+    h.textContent = l.category;
+    listsBox.appendChild(h);
+  }
   const lab = document.createElement('label');
   lab.innerHTML = '<input type="checkbox" checked><span></span><span class="state"></span>';
   lab.querySelector('input').value = l.id;
@@ -75,16 +85,57 @@ $('addLists').addEventListener('click', async () => {
   hint.textContent = 'Adding…';
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const res = await chrome.tabs.sendMessage(tab.id, { type: 'sncl:add-lists', ids });
+    const res = await chrome.tabs.sendMessage(tab.id, { type: 'sncl:add-lists', ids, group: $('groupLists').checked });
     if (!res || !res.ok) throw new Error((res && res.error) || 'No answer');
     boxes.forEach((b) => {
       const st = b.parentElement.querySelector('.state');
       const r = res.results[b.value];
       if (!r) return;
-      st.textContent = r === 'added' ? 'added' : r === 'exists' ? 'already there' : r;
-      st.className = 'state ' + (r === 'added' || r === 'exists' ? 'ok' : 'err');
+      st.textContent = { added: 'added', exists: 'already there', updated: 'updated' }[r] || r;
+      st.className = 'state ' + (['added', 'exists', 'updated'].includes(r) ? 'ok' : 'err');
     });
-    hint.textContent = 'Done. Reload the ServiceNow list page to see new lists.';
+    // new lists only show up after a reload of the ServiceNow page
+    if (Object.values(res.results).some((r) => r === 'added' || r === 'updated')) {
+      hint.textContent = 'Done. Reloading the ServiceNow page…';
+      chrome.tabs.reload(tab.id);
+    } else {
+      hint.textContent = 'Done. No lists added or changed.';
+    }
+  } catch (e) {
+    hint.textContent = /Receiving end does not exist|Could not establish/.test(e.message)
+      ? 'Please open a ServiceNow workspace tab (serviceportal.unibe.ch) and try again.'
+      : e.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Delete all imported lists ("SN: …") – needs a second click within 4 s to confirm
+$('removeLists').addEventListener('click', async () => {
+  const btn = $('removeLists');
+  const hint = $('listsHint');
+  if (!btn.dataset.armed) {
+    btn.dataset.armed = '1';
+    btn.textContent = 'Click again to delete';
+    setTimeout(() => { delete btn.dataset.armed; btn.textContent = 'Remove SN: lists'; }, 4000);
+    return;
+  }
+  delete btn.dataset.armed;
+  btn.textContent = 'Remove SN: lists';
+  btn.disabled = true;
+  hint.textContent = 'Removing…';
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const res = await chrome.tabs.sendMessage(tab.id, { type: 'sncl:remove-lists' });
+    if (!res || !res.ok) throw new Error((res && res.error) || 'No answer');
+    listsBox.querySelectorAll('.state').forEach((st) => { st.textContent = ''; st.className = 'state'; });
+    const failed = res.failed.length ? ` Could not remove: ${res.failed.join(', ')}.` : '';
+    if (res.removed) {
+      hint.textContent = `Removed ${res.removed} list(s).${failed} Reloading the ServiceNow page…`;
+      chrome.tabs.reload(tab.id);
+    } else {
+      hint.textContent = `No SN: lists found.${failed}`;
+    }
   } catch (e) {
     hint.textContent = /Receiving end does not exist|Could not establish/.test(e.message)
       ? 'Please open a ServiceNow workspace tab (serviceportal.unibe.ch) and try again.'
